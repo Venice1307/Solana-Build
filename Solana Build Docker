@@ -1,0 +1,109 @@
+use solana_sdk::{
+    account_info::AccountInfo,
+    entrypoint,
+    entrypoint::ProgramResult,
+    pubkey::Pubkey,
+    sysvar::{clock::Clock, Sysvar},
+};
+
+#[derive(Debug, Default)]
+struct MyData {
+    counter: u64,
+}
+
+fn process_transaction(
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    // Retrieve clock sysvar
+    let clock = Clock::from_account_info(accounts[0].clone())?;
+    let current_slot = clock.slot;
+
+    // Retrieve accounts
+    let my_data_account = &accounts[1];
+
+    // Deserialize instruction data
+    let instruction = deserialize_instruction(instruction_data)?;
+
+    // Match instruction and perform corresponding action
+    match instruction {
+        Instruction::IncrementCounter => {
+            // Access and modify account data
+            let mut my_data = MyData::from_account_info(my_data_account)?;
+
+            // Increment counter
+            my_data.counter += 1;
+
+            // Update account data
+            my_data.serialize(&mut *my_data_account.data.borrow_mut())?;
+        }
+        Instruction::GetCounter => {
+            // Access account data
+            let my_data = MyData::from_account_info(my_data_account)?;
+
+            // Print counter value
+            println!("Current counter value: {}", my_data.counter);
+        }
+    }
+
+    Ok(())
+}
+
+entrypoint!(process_transaction);
+
+// Custom instruction enum
+enum Instruction {
+    IncrementCounter,
+    GetCounter,
+}
+
+// Custom deserialization implementation for Instruction enum
+impl Deserialize for Instruction {
+    fn deserialize(input: &[u8]) -> Result<Self, ProgramError> {
+        match input {
+            [0] => Ok(Self::IncrementCounter),
+            [1] => Ok(Self::GetCounter),
+            _ => Err(ProgramError::InvalidInstructionData),
+        }
+    }
+}
+
+// Custom serialization implementation for Instruction enum
+impl Serialize for Instruction {
+    fn serialize(&self, output: &mut [u8]) -> Result<(), ProgramError> {
+        match self {
+            Self::IncrementCounter => {
+                output[0] = 0;
+            }
+            Self::GetCounter => {
+                output[0] = 1;
+            }
+        }
+        Ok(())
+    }
+
+    fn serialized_len(&self) -> usize {
+        1
+    }
+}
+
+// Custom implementation for accessing and modifying account data
+impl<'a> FromAccountInfo<'a> for MyData {
+    fn from_account_info(account_info: &'a AccountInfo) -> Result<Self, ProgramError> {
+        let counter = u64::from_le_bytes(*account_info.data.borrow())
+        Ok(Self { counter })
+    }
+}
+
+// Custom implementation for serializing account data
+impl Serialize for MyData {
+    fn serialize(&self, output: &mut [u8]) -> Result<(), ProgramError> {
+        let counter_bytes = self.counter.to_le_bytes();
+        output.copy_from_slice(&counter_bytes);
+        Ok(())
+    }
+
+    fn serialized_len(&self) -> usize {
+        std::mem::size_of::<u64>()
+    }
+}
